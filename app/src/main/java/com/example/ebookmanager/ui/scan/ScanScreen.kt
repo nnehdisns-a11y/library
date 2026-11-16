@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,7 +27,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.ebookmanager.data.SafPaths
 import com.example.ebookmanager.ui.AppScaffold
 
 @Composable
@@ -35,8 +35,13 @@ fun ScanScreen(
     onOpenLibrary: () -> Unit,
 ) {
     val viewModel: ScanViewModel = viewModel()
-    val roots by viewModel.roots.collectAsStateWithLifecycle()
+    val trees by viewModel.trees.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // 进入页面时重新核对系统持久化授权（用户可能已在系统设置中撤销）
+    LaunchedEffect(Unit) {
+        viewModel.refreshPermissions()
+    }
 
     val pickDirectory = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -55,27 +60,53 @@ fun ScanScreen(
         ) {
             Text("授权目录", style = MaterialTheme.typography.titleMedium)
 
-            if (roots.isEmpty()) {
+            if (trees.isEmpty()) {
                 Text(
                     text = "还没有授权目录。点击下方按钮选择手机里的文件夹，应用只会读取文件信息，" +
                         "不会修改或删除任何文件。",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             } else {
-                roots.forEach { tree ->
+                val invalidCount = trees.count { !it.authorized }
+                if (invalidCount > 0) {
+                    Text(
+                        text = "有 $invalidCount 个目录授权已失效。请重新添加或移除对应目录，" +
+                            "应用不会因此删除书籍记录。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                trees.forEach { item ->
                     Card(Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                            verticalAlignment = Alignment.Top,
                         ) {
-                            Text(
-                                text = SafPaths.rootLabel(tree),
-                                modifier = Modifier.weight(1f),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = item.root.displayName,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = item.root.path,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (!item.authorized) {
+                                    Text(
+                                        text = "授权已失效，请移除后重新添加",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
                             TextButton(
-                                onClick = { viewModel.removeTree(tree) },
+                                onClick = { viewModel.removeTree(item) },
                                 enabled = !state.isScanning,
                             ) {
                                 Text("移除")
@@ -96,7 +127,7 @@ fun ScanScreen(
 
             Button(
                 onClick = { viewModel.startScan() },
-                enabled = roots.isNotEmpty() && !state.isScanning,
+                enabled = trees.any { it.authorized } && !state.isScanning,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(if (state.isScanning) "扫描中…" else "开始扫描")

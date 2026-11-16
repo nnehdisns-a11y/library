@@ -51,7 +51,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ebookmanager.core.EbookFormat
 import com.example.ebookmanager.core.Formatters
 import com.example.ebookmanager.data.Book
-import com.example.ebookmanager.data.BookRepository
 import com.example.ebookmanager.data.BookSort
 import com.example.ebookmanager.data.FolderKey
 import com.example.ebookmanager.data.FolderSummary
@@ -67,7 +66,7 @@ fun LibraryScreen(
 ) {
     val viewModel: LibraryViewModel = viewModel()
     val filters by viewModel.filters.collectAsStateWithLifecycle()
-    val allBooks by BookRepository.books.collectAsStateWithLifecycle()
+    val allBooks by viewModel.books.collectAsStateWithLifecycle()
     val visibleBooks = remember(allBooks, filters) { LibraryQuery.filterAndSort(allBooks, filters) }
     val folders = remember(allBooks) { LibraryQuery.folders(allBooks) }
 

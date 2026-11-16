@@ -18,8 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ebookmanager.core.Formatters
-import com.example.ebookmanager.data.BookRepository
 import com.example.ebookmanager.ui.AppScaffold
 
 @Composable
@@ -27,7 +27,8 @@ fun HomeScreen(
     onOpenLibrary: () -> Unit,
     onScan: () -> Unit,
 ) {
-    val books by BookRepository.books.collectAsStateWithLifecycle()
+    val viewModel: HomeViewModel = viewModel()
+    val books by viewModel.books.collectAsStateWithLifecycle()
     val recent = books.sortedByDescending { it.addedAt }.take(5)
 
     AppScaffold(title = "本地书库") { padding ->

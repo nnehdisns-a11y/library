@@ -1,38 +1,59 @@
 package com.example.ebookmanager.data
 
-import kotlinx.coroutines.flow.MutableStateFlow
+import com.example.ebookmanager.data.db.LibraryDao
+import com.example.ebookmanager.data.db.TreeEntity
+import com.example.ebookmanager.data.db.toBook
+import com.example.ebookmanager.data.db.toEntity
+import com.example.ebookmanager.data.db.toTreeRoot
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 
 /**
- * 阶段一用内存仓库，进程结束后需要重新扫描；阶段二会替换为 Room。
+ * 书库唯一数据入口：所有界面都观察 Room 的 Flow，重启后自动恢复。
  */
-object BookRepository {
-    private val _books = MutableStateFlow<List<Book>>(emptyList())
-    val books: StateFlow<List<Book>> = _books.asStateFlow()
+class BookRepository(
+    private val dao: LibraryDao,
+    scope: CoroutineScope,
+) {
+    val books: StateFlow<List<Book>> = dao.observeBooks()
+        .map { entities -> entities.map { it.toBook() } }
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-    /** 按 document URI 去重合并；重新扫描不会产生重复记录。 */
-    fun merge(scanned: List<Book>) {
-        _books.update { current ->
-            val byUri = current.associateBy { it.uri }.toMutableMap()
-            scanned.forEach { book ->
-                val existing = byUri[book.uri]
-                byUri[book.uri] = if (existing == null) {
-                    book
-                } else {
-                    book.copy(addedAt = existing.addedAt)
-                }
-            }
-            byUri.values.sortedBy { it.title.lowercase() }
+    val trees: StateFlow<List<TreeRoot>> = dao.observeTrees()
+        .map { entities -> entities.map { it.toTreeRoot() } }
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    suspend fun addTree(uri: String, displayName: String, path: String) {
+        val existing = dao.findTree(uri)
+        dao.upsertTree(
+            TreeEntity(
+                uri = uri,
+                displayName = displayName,
+                path = path,
+                addedAt = existing?.addedAt ?: System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    /**
+     * 只在一个目录扫描完整成功后调用：事务内替换该目录的记录，
+     * 保留首次加入时间，其他目录不受影响。
+     */
+    suspend fun syncTree(treeUri: String, scanned: List<Book>) {
+        val existingAddedAt = dao.booksByTree(treeUri).associate { it.uri to it.addedAt }
+        val entities = scanned.map { book ->
+            book.toEntity().copy(
+                addedAt = existingAddedAt[book.uri] ?: book.addedAt,
+            )
         }
+        dao.replaceTreeScan(treeUri, entities)
     }
 
-    fun removeTree(treeUri: String) {
-        _books.update { list -> list.filterNot { it.treeUri == treeUri } }
-    }
-
-    fun clear() {
-        _books.value = emptyList()
+    /** 移除目录及其书籍记录；不会删除设备上的文件。 */
+    suspend fun removeTree(treeUri: String) {
+        dao.removeTreeRecords(treeUri)
     }
 }

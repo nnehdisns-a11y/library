@@ -78,7 +78,7 @@ fun BookDetailScreen(book: Book, onBack: () -> Unit) {
                 text = when (fileExists) {
                     null -> "正在检查文件…"
                     true -> "文件存在"
-                    false -> "文件已不存在（记录会保留，不会删除任何文件）"
+                    false -> "文件不存在或无法访问（记录会保留，不会删除任何文件）"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = when (fileExists) {
