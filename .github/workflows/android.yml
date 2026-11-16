@@ -20,34 +20,36 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit tests
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
-
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Test and build
+        run: |
+          set -o pipefail
+          {
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+            java -version
+            ls "$ANDROID_HOME/platforms" || true
+            ls "$ANDROID_HOME/build-tools" || true
+            ./gradlew testDebugUnitTest assembleDebug --no-daemon --stacktrace
+          } 2>&1 | tee build.log
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      # 打 tag 时把 APK 挂到 Release，手机上可直接下载安装，无需登录
-      - name: Publish APK to release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # 构建失败时把完整日志推到 ci-logs 分支，便于公开读取排错（不触发新工作流）
+      - name: Publish failure log
+        if: failure()
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            app/build/outputs/apk/debug/app-debug.apk \
-            --title "$GITHUB_REF_NAME" \
-            --notes "自动构建的 debug APK" || \
-          gh release upload "$GITHUB_REF_NAME" \
-            app/build/outputs/apk/debug/app-debug.apk --clobber
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B ci-logs
+          git add -f build.log
+          git commit -m "CI failure log ${GITHUB_SHA::7}"
+          git push -f origin ci-logs
