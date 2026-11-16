@@ -20,4 +20,15 @@ object SafPaths {
     }
 
     fun fullPath(book: Book): String = "${rootLabel(Uri.parse(book.treeUri))}/${book.relativePath}"
+
+    fun folderPath(folder: FolderKey): String =
+        folderPath(Uri.parse(folder.treeUri), folder.relativeDir)
+
+    fun folderPath(treeUri: Uri, relativeDir: String): String {
+        val root = rootLabel(treeUri)
+        return when {
+            relativeDir.isEmpty() || relativeDir == "/" -> root
+            else -> "$root/$relativeDir"
+        }
+    }
 }
